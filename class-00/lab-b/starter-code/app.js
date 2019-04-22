@@ -176,17 +176,18 @@ Student.prototype.scope = function() {
 };
 
 // TODO: Uncomment the following line of code to see the output in the browser console
-// console.log(joe.scope());
+console.log(joe.scope());
 
 Student.prototype.scopeArrow = () => console.log(this);
 
 // TODO: Uncomment the following line of code to see the output in the browser console
-// console.log(joe.scopeArrow());
+console.log(joe.scopeArrow());
 
 // TODO: Write a COMMENT below to answer the following questions.
 // 1. What is "this" when joe.scope() is invoked?
-//
+//    It is undefined.
 // 2. What is "this" when joe.scopeArrow() is invoked?
-//
+//    Also, undefined when called on line 184. But line 181 gets evaluated because it has a return and is the window object.
 // 3. Explain why "this" is different when an arrow function is used.
-//
+//    The scope of this is not bound to the function. So when it returns on 181 (the first time) this is bound to the
+//    window. After that, when invoked this is not bound to anything.
