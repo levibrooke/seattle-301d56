@@ -4,6 +4,7 @@
 const express = require('express');
 const superagent = require('superagent');
 const cors = require('cors');
+const pg = require('pg');
 
 // Load environment variables from .env file
 require('dotenv').config();
@@ -13,6 +14,12 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
+
+// Database Setup
+//            postgres protocol
+//                            my uname/pw           domain : port/database
+const client = new pg.Client(process.env.DATABASE_URL);
+client.connect();
 
 // API Routes
 app.get('/location', (request, response) => {
@@ -50,18 +57,38 @@ function Weather(day) {
 function Event(event) {
   this.link = event.url;
   this.name = event.name.text;
-  this.event_date = new Date(event.start.local).toString().slice(0, 15);
+  this.event_date = new Date(event.start.local).toDateString();
   this.summary = event.summary;
 }
 
 function searchToLatLong(query) {
-  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${query}&key=${process.env.GEOCODE_API_KEY}`;
+  // check if query in database
+  let sqlStatement = 'SELECT * FROM location WHERE search_query = $1;';
+  let values = [ query ];
+  return client.query(sqlStatement, values)
+    .then( (data) => {
+      console.log('we made it');
+      console.log(data);
+      // if data in db, use data from db and send result
+      if(data.rowCount > 0) {
+        // use data from db and send result
+        console.log('we are sending data from the database');
+        return data.rows[0];
+      } else {
+        // otherwise, grab data from gmaps, save to db, and send result
+        const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${query}&key=${process.env.GEOCODE_API_KEY}`;
 
-  return superagent.get(url)
-    .then(res => {
-      return new Location(query, res);
-    })
-    .catch(error => handleError(error));
+        return superagent.get(url)
+          .then(res => {
+            let newLocation = new Location(query, res);
+            let insertStatement = 'INSERT INTO location ( search_query, formatted_query, latitude, longitude ) VALUES ( $1, $2, $3, $4 );';
+            let insertValues = [ newLocation.search_query, newLocation.formatted_query, newLocation.latitude, newLocation.longitude ];
+            client.query(insertStatement, insertValues);
+            return newLocation;
+          })
+          .catch(error => handleError(error));
+      }
+    });
 }
 
 function getWeather(request, response) {
@@ -80,9 +107,10 @@ function getWeather(request, response) {
 
 
 function getEvents(request, response) {
-  const url = `https://www.eventbriteapi.com/v3/events/search?token=${process.env.EVENTBRITE_API_KEY}&location.address=${request.query.data.formatted_query}`;
+  const url = `https://www.eventbriteapi.com/v3/events/search?location.address=${request.query.data.formatted_query}`;
 
   superagent.get(url)
+    .set('Authorization', `Bearer ${process.env.EVENTBRITE_API_KEY}`)
     .then(result => {
       const events = result.body.events.map(eventData => {
         const event = new Event(eventData);
